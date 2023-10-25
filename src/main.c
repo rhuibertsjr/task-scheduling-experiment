@@ -47,24 +47,23 @@ perform_test_fast_fourier_transform()
 
 }
 
+ThreadPolicy policy;   
+
 int 
 main()
 {
   pthread_t tasks[TASKS_AMOUNT]; 
-  ThreadPolicy policy; 
 
-  for(policy = THREAD_POLICY_OTHER; policy < THREAD_POLICY_END ; policy++)
+  for(policy = THREAD_POLICY_OTHER; policy < THREAD_POLICY_END; policy++)
   {
     ThreadConfig task_config; 
     task_config.sched_priority = sched_get_priority_max(policy);
 
     pthread_setschedparam(pthread_self(), policy, &task_config);
     
-    printf("(%s) starting...\n", thread_policy_tag[policy]);
     pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication, NULL);
     pthread_create(&tasks[1], NULL, perform_test_vector_dot_product, NULL);
     pthread_create(&tasks[2], NULL, perform_test_fast_fourier_transform, NULL);
-    pthread_create(&tasks[3], NULL, perform_test_matrix_multiplication, NULL);
 
     for (uint8_t index; index < TASKS_AMOUNT; index++)
     {
