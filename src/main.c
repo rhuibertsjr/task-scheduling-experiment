@@ -9,6 +9,8 @@
 #include <pthread.h>
 #include <linux/sched.h>
 
+#include <fftw3.h>
+
 #define ASSERT(c) do { if (!(c)) {                                                \
   printf("Assertion failed: %s\n", #c ); fflush(stdout); (*(volatile int*)0 = 0); \
 } } while(0)
@@ -17,8 +19,7 @@
 
 #define TASKS_AMOUNT 3
 
-#define MB(x) ((x) << 20)
-#define GB(x) ((x) << 30)
+#define GB(x) ((size_t)(x) * 1024 * 1024 * 1024)
 
 #define internal static
 
@@ -33,6 +34,12 @@ union Vec3I64
   };
 
   int64_t elements[3];
+};
+
+typedef union Vec9I64 Vec9I64;
+union Vec9I64
+{
+  int64_t elements[9];
 };
 
 typedef union Mat3x3I64 Mat3x3I64;
@@ -64,7 +71,7 @@ internal void *
 arena_alloc(Arena *arena, uint64_t size)
 {
 	if (arena->commit_pos + size <= arena->size) {
-		void *ptr = (uint64_t*) arena->memory + arena->commit_pos;
+    void* ptr = (void*)((uintptr_t) arena->memory + (uintptr_t) arena->commit_pos);
 		arena->commit_pos += size;
 
 		memset(ptr, 0, size);
@@ -90,6 +97,10 @@ union ThreadParameters
     Mat3x3I64 *matrix_sample_data;
     uint64_t matrix_sample_data_size;
   };
+  struct {
+    Vec9I64 *vector_sample_data;
+    uint64_t vector_sample_data_size;
+  }; 
 };
 
 typedef enum ThreadPolicy ThreadPolicy;
@@ -120,7 +131,7 @@ const char* thread_policy_tag[] =
 internal Mat3x3I64 * 
 populate_matrix_sample_data(Arena *arena, uint64_t sample_size)
 {
-  ASSERT(arena->size > sample_size * sizeof(Mat3x3I64) 
+  ASSERT(arena->size - arena->commit_pos > sample_size * sizeof(Mat3x3I64) 
     && "Arena size is not sufficient.");
 
   const uint8_t matrix_size = 3;
@@ -149,6 +160,35 @@ populate_matrix_sample_data(Arena *arena, uint64_t sample_size)
     printf("\n"); */
 
     ptr = (Mat3x3I64*)((uintptr_t) ptr + (uintptr_t) sizeof(Mat3x3I64));
+
+  }
+
+  return result;
+
+}
+
+internal Vec9I64 * 
+populate_vector_sample_data(Arena *arena, uint64_t sample_size)
+{
+  ASSERT(arena->size - arena->commit_pos > sample_size * sizeof(Vec9I64) 
+    && "Arena size is not sufficient.");
+
+  const uint8_t vector_size = 100;
+  Vec9I64 *ptr = 
+    (Vec9I64*) arena_alloc(arena, sample_size * sizeof(Vec9I64));
+  Vec9I64 *result = ptr;
+
+  srand(RANDOM_NUMBER_GENERATOR_SEED);
+
+  for(uint64_t sample_count = 0; sample_count < sample_size; sample_count++)
+  {
+
+    for (int i = 0; i < vector_size; i++) 
+    {
+      ptr->elements[i] = (uint64_t) rand() % 101;
+    }
+
+    ptr = (Vec9I64*)((uintptr_t) ptr + (uintptr_t) sizeof(Vec9I64));
 
   }
 
@@ -202,36 +242,65 @@ perform_test_matrix_multiplication(void *parameters)
 internal void * 
 perform_test_vector_dot_product(void *parameters)
 {
+  printf("  - perform_test_vector_multiplication()\n");
 
+  uint64_t sample_size = ((ThreadParameters*) parameters)->vector_sample_data_size;
+  Vec9I64 *vector1 = ((ThreadParameters*) parameters)->vector_sample_data;
+  Vec9I64 *vector2 = (Vec9I64*)((uintptr_t) ((ThreadParameters*) parameters)->vector_sample_data + (uintptr_t) sizeof(Vec9I64));
+  const uint8_t vector_size = 9;
+
+  int64_t result;
+
+  for (uint64_t sample_count = 0; sample_count < sample_size; sample_count++)
+  {
+
+    for (int i = 0; i < vector_size; i++) 
+    {
+      result += vector1->elements[i] * vector2->elements[i];
+    }
+
+    vector1 = (Vec9I64*)((uintptr_t) vector1 + (uintptr_t) sizeof(Vec9I64));
+    vector2 = (Vec9I64*)((uintptr_t) vector2 + (uintptr_t) sizeof(Vec9I64));
+
+  }
+
+  pthread_exit(NULL); 
 }
 
 internal void *
 perform_test_fast_fourier_transform(void *parameters)
 {
-
+  
 }
 
 ThreadPolicy policy;   
 uint64_t *buffer; 
 
 #define MATRIX_SAMPLE_DATA_SIZE 13000000
+#define VECTOR_SAMPLE_DATA_SIZE 13000000
 
 int 
 main()
 {
-  buffer = malloc(GB(1));     
+  buffer = malloc(GB(2));     
   ASSERT(buffer != NULL && "Couldn't request memory from operating system.");
 
   Arena arena;
-  arena_initialize(&arena, buffer, GB(1));
+  arena_initialize(&arena, buffer, GB(2));
 
   pthread_t tasks[TASKS_AMOUNT]; 
 
   Mat3x3I64 *matrix_sample_data = populate_matrix_sample_data(&arena, MATRIX_SAMPLE_DATA_SIZE); 
+  Vec9I64 *vector_sample_data = populate_vector_sample_data(&arena, VECTOR_SAMPLE_DATA_SIZE); 
 
-  ThreadParameters params = {
-    matrix_sample_data,
-    MATRIX_SAMPLE_DATA_SIZE
+  ThreadParameters matrix_test_params = {
+    .matrix_sample_data = matrix_sample_data,
+    .matrix_sample_data_size = MATRIX_SAMPLE_DATA_SIZE
+  };
+
+  ThreadParameters vector_test_params = {
+    .vector_sample_data = vector_sample_data,
+    .vector_sample_data_size = VECTOR_SAMPLE_DATA_SIZE
   };
 
   for(policy = THREAD_POLICY_OTHER; policy < THREAD_POLICY_END; policy++)
@@ -244,9 +313,9 @@ main()
     pthread_setschedparam(pthread_self(), policy, &task_config);
     
     printf("(%s)\n", thread_policy_tag[policy]);
-    pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication, &params);
-    pthread_create(&tasks[1], NULL, perform_test_matrix_multiplication, &params);
-    pthread_create(&tasks[2], NULL, perform_test_matrix_multiplication, &params);
+    pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication, &matrix_test_params);
+    pthread_create(&tasks[1], NULL, perform_test_vector_dot_product,    &vector_test_params);
+    pthread_create(&tasks[2], NULL, perform_test_matrix_multiplication, &matrix_test_params);
 
     for (uint8_t index = 0; index < TASKS_AMOUNT; index++)
     {
