@@ -16,7 +16,6 @@
 #define RANDOM_NUMBER_GENERATOR_SEED 64
 
 #define TASKS_AMOUNT 3
-#define MATRIX_SAMPLE_DATA_SIZE 4
 
 #define MB(x) ((x) << 20)
 #define GB(x) ((x) << 30)
@@ -141,13 +140,13 @@ populate_matrix_sample_data(Arena *arena, uint64_t sample_size)
       }
     }  
 
-    for (int i = 0; i < 3; i++) {
+    /*for (int i = 0; i < 3; i++) {
       for (int j = 0; j < 3; j++) {
         printf("%lld ", ptr->elements[i][j]); // Use %lld for int64_t
       }
       printf("\n"); // Move to the next row
     }    
-    printf("\n");
+    printf("\n"); */
 
     ptr = (Mat3x3I64*)((uintptr_t) ptr + (uintptr_t) sizeof(Mat3x3I64));
 
@@ -160,9 +159,11 @@ populate_matrix_sample_data(Arena *arena, uint64_t sample_size)
 internal void * 
 perform_test_matrix_multiplication(void *parameters)
 {
+  printf("  - perform_test_matrix_multiplication()\n");
+
   uint64_t sample_size = ((ThreadParameters*) parameters)->matrix_sample_data_size;
   Mat3x3I64 *matrix1 = ((ThreadParameters*) parameters)->matrix_sample_data;
-  Mat3x3I64 *matrix2 = ((ThreadParameters*) parameters)->matrix_sample_data;
+  Mat3x3I64 *matrix2 = (Mat3x3I64*)((uintptr_t) ((ThreadParameters*) parameters)->matrix_sample_data + (uintptr_t) sizeof(Mat3x3I64));
   const uint8_t matrix_size = 3;
 
   Mat3x3I64 result;
@@ -182,13 +183,13 @@ perform_test_matrix_multiplication(void *parameters)
       }
     }
 
-    for (int i = 0; i < 3; i++) {
+    /*for (int i = 0; i < 3; i++) {
       for (int j = 0; j < 3; j++) {
         printf("%lld ", matrix1->elements[i][j]); // Use %lld for int64_t
       }
       printf("\n"); // Move to the next row
     }    
-    printf("\n");
+    printf("\n");*/
 
     matrix1 = (Mat3x3I64*)((uintptr_t) matrix1 + (uintptr_t) sizeof(Mat3x3I64));
     matrix2 = (Mat3x3I64*)((uintptr_t) matrix2 + (uintptr_t) sizeof(Mat3x3I64));
@@ -211,13 +212,18 @@ perform_test_fast_fourier_transform(void *parameters)
 }
 
 ThreadPolicy policy;   
-uint64_t buffer[MB(1)]; 
+uint64_t *buffer; 
+
+#define MATRIX_SAMPLE_DATA_SIZE 13000000
 
 int 
 main()
 {
+  buffer = malloc(GB(1));     
+  ASSERT(buffer != NULL && "Couldn't request memory from operating system.");
+
   Arena arena;
-  arena_initialize(&arena, &buffer, MB(1));
+  arena_initialize(&arena, buffer, GB(1));
 
   pthread_t tasks[TASKS_AMOUNT]; 
 
@@ -238,11 +244,11 @@ main()
     pthread_setschedparam(pthread_self(), policy, &task_config);
     
     printf("(%s)\n", thread_policy_tag[policy]);
-    pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication,  &params);
-    pthread_create(&tasks[1], NULL, perform_test_vector_dot_product,     &params);
-    pthread_create(&tasks[2], NULL, perform_test_fast_fourier_transform, &params);
+    pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication, &params);
+    pthread_create(&tasks[1], NULL, perform_test_matrix_multiplication, &params);
+    pthread_create(&tasks[2], NULL, perform_test_matrix_multiplication, &params);
 
-    for (uint8_t index; index < TASKS_AMOUNT; index++)
+    for (uint8_t index = 0; index < TASKS_AMOUNT; index++)
     {
       pthread_join(tasks[index], NULL);
     }
