@@ -18,7 +18,7 @@
 
 #define RANDOM_NUMBER_GENERATOR_SEED 64
 
-#define TASKS_AMOUNT 3
+#define TASKS_AMOUNT 5
 
 #define GB(x) ((size_t)(x) * 1024 * 1024 * 1024)
 
@@ -296,6 +296,21 @@ perform_test_fast_fourier_transform(void *parameters)
   pthread_exit(NULL); 
 }
 
+internal void *
+perform_test_short_sleep(void *parameters)
+{
+  printf("  - perform_test_short_sleep()\n");
+  for (volatile uint64_t a = 0; a < 1000; a++)
+    for (volatile uint64_t b = 0; b < 10000; b++) {}
+}
+
+internal void *
+perform_test_long_sleep(void *parameters)
+{
+  printf("  - perform_test_long_sleep()\n");
+  usleep(1000);
+}
+
 ThreadPolicy policy;   
 uint64_t *buffer; 
 
@@ -348,6 +363,8 @@ main()
     pthread_create(&tasks[0], NULL, perform_test_matrix_multiplication,  &matrix_test_params);
     pthread_create(&tasks[1], NULL, perform_test_vector_dot_product,     &vector_test_params);
     pthread_create(&tasks[2], NULL, perform_test_fast_fourier_transform, &fft_test_params);
+    pthread_create(&tasks[3], NULL, perform_test_short_sleep, NULL );
+    pthread_create(&tasks[4], NULL, perform_test_long_sleep,  NULL);
 
     for (uint8_t index = 0; index < TASKS_AMOUNT; index++)
     {
