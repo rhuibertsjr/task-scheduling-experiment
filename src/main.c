@@ -16,6 +16,13 @@
   printf("Assertion failed: %s\n", #c ); fflush(stdout); (*(volatile int*)0 = 0); \
 } } while(0)
 
+#define START_TIMER() clock_t start_time = clock()
+#define END_TIMER()                                                               \
+  clock_t end_time = clock();                                                     \
+  double execution_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;       \
+  printf("Execution time of %s is %.4f\n", __func__, execution_time);             \
+  fflush(stdout);
+
 #define RANDOM_NUMBER_GENERATOR_SEED 64
 
 #define TASKS_AMOUNT 5
@@ -220,7 +227,9 @@ populate_fft_sample_data(Arena *arena, uint64_t sample_size)
 internal void * 
 perform_test_matrix_multiplication(void *parameters)
 {
+  START_TIMER();
   printf("  - perform_test_matrix_multiplication()\n");
+  
 
   uint64_t sample_size = ((ThreadParameters*) parameters)->matrix_sample_data_size;
   Mat3x3I64 *matrix1 = ((ThreadParameters*) parameters)->matrix_sample_data;
@@ -248,12 +257,14 @@ perform_test_matrix_multiplication(void *parameters)
     matrix2 = (Mat3x3I64*)((uintptr_t) matrix2 + (uintptr_t) sizeof(Mat3x3I64));
   }
 
+  END_TIMER();
   pthread_exit(NULL); 
 }
 
 internal void * 
 perform_test_vector_dot_product(void *parameters)
 {
+  START_TIMER();
   printf("  - perform_test_vector_multiplication()\n");
 
   uint64_t sample_size = ((ThreadParameters*) parameters)->vector_sample_data_size;
@@ -276,12 +287,14 @@ perform_test_vector_dot_product(void *parameters)
 
   }
 
+  END_TIMER();
   pthread_exit(NULL); 
 }
 
 internal void *
 perform_test_fast_fourier_transform(void *parameters)
 {
+  START_TIMER();
   printf("  - perform_test_fast_fourier_transform()\n");
 
   fftw_plan plan;
@@ -293,22 +306,29 @@ perform_test_fast_fourier_transform(void *parameters)
 
   fftw_execute(plan); 
 
+  END_TIMER();
+  pthread_exit(NULL); 
+}
+
+internal void *
+perform_test_long_sleep(void *parameters)
+{
+  START_TIMER();
+  printf("  - perform_test_long_sleep()\n");
+  for (volatile uint64_t a = 0; a < 1000; a++)
+    for (volatile uint64_t b = 0; b < 10000; b++) {}
+  END_TIMER();
   pthread_exit(NULL); 
 }
 
 internal void *
 perform_test_short_sleep(void *parameters)
 {
+  START_TIMER();
   printf("  - perform_test_short_sleep()\n");
-  for (volatile uint64_t a = 0; a < 1000; a++)
-    for (volatile uint64_t b = 0; b < 10000; b++) {}
-}
-
-internal void *
-perform_test_long_sleep(void *parameters)
-{
-  printf("  - perform_test_long_sleep()\n");
   usleep(1000);
+  END_TIMER();
+  pthread_exit(NULL); 
 }
 
 ThreadPolicy policy;   
@@ -352,6 +372,7 @@ main()
 
   for(policy = THREAD_POLICY_OTHER; policy < THREAD_POLICY_END; policy++)
   {
+    START_TIMER();
     if (policy == THREAD_POLICY_NONE) continue;
 
     ThreadConfig task_config; 
@@ -371,6 +392,7 @@ main()
       pthread_join(tasks[index], NULL);
     }
 
+    END_TIMER();
   }
 
   return 0;
