@@ -16,13 +16,6 @@
   printf("Assertion failed: %s\n", #c ); fflush(stdout); (*(volatile int*)0 = 0); \
 } } while(0)
 
-#define START_TIMER() clock_t start_time = clock()
-#define END_TIMER()                                                               \
-  clock_t end_time = clock();                                                     \
-  double execution_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;       \
-  printf("Execution time of %s is %.4f\n", __func__, execution_time);             \
-  fflush(stdout);
-
 #define RANDOM_NUMBER_GENERATOR_SEED 64
 
 #define TASKS_AMOUNT 5
@@ -140,6 +133,36 @@ const char* thread_policy_tag[] =
   [THREAD_POLICY_END]      = ""
 };
 
+typedef enum ThreadTask ThreadTask;
+enum ThreadTask 
+{
+  THREAD_TASK_SHORT_SLEEP = 0x0, 
+  THREAD_TASK_LONG_SLEEP  = 0x1, 
+  THREAD_TASK_MATRIX      = 0x2, 
+  THREAD_TASK_VECTOR      = 0x3, 
+  THREAD_TASK_FFT         = 0x4, 
+  THREAD_TASK_MAIN        = 0x5, 
+  THREAD_TASK_END         = 0x6
+};
+
+const char* thread_task_tag[] = 
+{
+  [THREAD_TASK_SHORT_SLEEP] = "short sleep",
+  [THREAD_TASK_LONG_SLEEP]  = "long sleep ",
+  [THREAD_TASK_MATRIX]      = "matrix     ",
+  [THREAD_TASK_VECTOR]      = "vector     ",
+  [THREAD_TASK_FFT]         = "fft        ",
+  [THREAD_TASK_MAIN]        = "main       ",
+  [THREAD_TASK_END]         = ""
+};
+
+#define START_TIMER() clock_t start_time = clock()
+#define END_TIMER(x)                                                               \
+  clock_t end_time = clock();                                                     \
+  double execution_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;       \
+  printf("%s\t %.4f\n", thread_task_tag[x], execution_time);             \
+  fflush(stdout);
+
 internal Mat3x3I64 * 
 populate_matrix_sample_data(Arena *arena, uint64_t sample_size)
 {
@@ -228,8 +251,6 @@ internal void *
 perform_test_matrix_multiplication(void *parameters)
 {
   START_TIMER();
-  printf("  - perform_test_matrix_multiplication()\n");
-  
 
   uint64_t sample_size = ((ThreadParameters*) parameters)->matrix_sample_data_size;
   Mat3x3I64 *matrix1 = ((ThreadParameters*) parameters)->matrix_sample_data;
@@ -257,7 +278,7 @@ perform_test_matrix_multiplication(void *parameters)
     matrix2 = (Mat3x3I64*)((uintptr_t) matrix2 + (uintptr_t) sizeof(Mat3x3I64));
   }
 
-  END_TIMER();
+  END_TIMER(THREAD_TASK_MATRIX);
   pthread_exit(NULL); 
 }
 
@@ -265,7 +286,6 @@ internal void *
 perform_test_vector_dot_product(void *parameters)
 {
   START_TIMER();
-  printf("  - perform_test_vector_multiplication()\n");
 
   uint64_t sample_size = ((ThreadParameters*) parameters)->vector_sample_data_size;
   Vec9I64 *vector1 = ((ThreadParameters*) parameters)->vector_sample_data;
@@ -287,7 +307,7 @@ perform_test_vector_dot_product(void *parameters)
 
   }
 
-  END_TIMER();
+  END_TIMER(THREAD_TASK_VECTOR);
   pthread_exit(NULL); 
 }
 
@@ -295,7 +315,6 @@ internal void *
 perform_test_fast_fourier_transform(void *parameters)
 {
   START_TIMER();
-  printf("  - perform_test_fast_fourier_transform()\n");
 
   fftw_plan plan;
   uint64_t sample_size = ((ThreadParameters*) parameters)->fft_sample_data_size;
@@ -306,7 +325,7 @@ perform_test_fast_fourier_transform(void *parameters)
 
   fftw_execute(plan); 
 
-  END_TIMER();
+  END_TIMER(THREAD_TASK_FFT);
   pthread_exit(NULL); 
 }
 
@@ -314,10 +333,9 @@ internal void *
 perform_test_long_sleep(void *parameters)
 {
   START_TIMER();
-  printf("  - perform_test_long_sleep()\n");
   for (volatile uint64_t a = 0; a < 1000; a++)
     for (volatile uint64_t b = 0; b < 10000; b++) {}
-  END_TIMER();
+  END_TIMER(THREAD_TASK_SHORT_SLEEP);
   pthread_exit(NULL); 
 }
 
@@ -325,9 +343,8 @@ internal void *
 perform_test_short_sleep(void *parameters)
 {
   START_TIMER();
-  printf("  - perform_test_short_sleep()\n");
   usleep(1000);
-  END_TIMER();
+  END_TIMER(THREAD_TASK_LONG_SLEEP);
   pthread_exit(NULL); 
 }
 
@@ -351,6 +368,7 @@ main()
 
   pthread_t tasks[TASKS_AMOUNT]; 
 
+	printf("Preparing samples...\n");
   Mat3x3I64 *matrix_sample_data = populate_matrix_sample_data(&arena, MATRIX_SAMPLE_DATA_SIZE); 
   Vec9I64 *vector_sample_data = populate_vector_sample_data(&arena, VECTOR_SAMPLE_DATA_SIZE); 
   fftw_complex *fft_sample_data = populate_fft_sample_data(&arena, FFT_SAMPLE_DATA_SIZE); 
@@ -392,7 +410,7 @@ main()
       pthread_join(tasks[index], NULL);
     }
 
-    END_TIMER();
+    END_TIMER(THREAD_TASK_MAIN);
   }
 
   return 0;
